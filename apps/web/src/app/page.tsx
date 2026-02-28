@@ -34,6 +34,33 @@ const proofMetrics = [
   }
 ]
 
+const platformModules = [
+  {
+    title: 'Questionnaire Ingestion',
+    badge: 'Excel/CSV first',
+    detail: 'Detect headers, suggest mapping, and let analysts approve question and answer columns before extraction.',
+    points: ['`.xlsx`, `.xls`, `.csv` intake', 'Stable question IDs', 'Manual mapping override']
+  },
+  {
+    title: 'Evidence Library',
+    badge: 'Source scoped',
+    detail: 'Store policies, audits, and reports with metadata so every reusable answer can link back to source snippets.',
+    points: ['Citable snippets', 'Document metadata', 'Workspace isolation']
+  },
+  {
+    title: 'Draft and Review Queue',
+    badge: 'Analyst control',
+    detail: 'Generate citation-backed drafts, score confidence, and route low-confidence items for acknowledgement and edits.',
+    points: ['Confidence tiers', 'Assignment and comments', 'Needs input states']
+  },
+  {
+    title: 'Approvals and Export',
+    badge: 'Audit ready',
+    detail: 'Block final export until approvals complete, then write responses to mapped cells and log immutable activity.',
+    points: ['Approval gating', 'Spreadsheet-preserving export', 'Append-only activity timeline']
+  }
+]
+
 const frictionPoints = [
   'Answers copied from old templates without fresh evidence checks.',
   'Questionnaire columns mapped manually, causing repeated rework.',
@@ -75,6 +102,24 @@ const governanceControls = [
   'Prompt and source traceability for every generated draft',
   'Configurable document-review reminders every 3, 6, 9, or 12 months',
   'Default no-training policy for customer content'
+]
+
+const readinessPillars = [
+  {
+    title: 'Operations Readiness',
+    detail: 'Role-scoped workflows for analysts, approvers, and leadership reviewers.',
+    status: 'MVP scope'
+  },
+  {
+    title: 'Data Handling Readiness',
+    detail: 'Workspace separation and deletion controls aligned to client-by-client operations.',
+    status: 'MVP scope'
+  },
+  {
+    title: 'Audit Readiness',
+    detail: 'Prompt/source trace plus immutable export history for procurement reviews.',
+    status: 'MVP scope'
+  }
 ]
 
 const audienceCards = [
@@ -130,7 +175,7 @@ export default async function LandingPage() {
   return (
     <main className="min-h-svh bg-linear-to-b from-zinc-100 via-zinc-100 to-blue-50/30 px-4 py-4 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <header className="rounded-xl border border-zinc-950/10 bg-white px-4 sm:px-6">
+        <header className="sticky top-3 z-20 rounded-xl border border-zinc-950/10 bg-white/95 px-4 shadow-xs backdrop-blur sm:px-6">
           <Navbar>
             <NavbarSection>
               <NavbarItem href="/">
@@ -142,6 +187,18 @@ export default async function LandingPage() {
                   </span>
                   <NavbarLabel className="text-sm font-semibold">Security Questionnaire Copilot</NavbarLabel>
                 </span>
+              </NavbarItem>
+              <NavbarItem href="#features">
+                <NavbarLabel>Features</NavbarLabel>
+              </NavbarItem>
+              <NavbarItem href="#trust">
+                <NavbarLabel>Trust</NavbarLabel>
+              </NavbarItem>
+              <NavbarItem href="#pricing">
+                <NavbarLabel>Pricing</NavbarLabel>
+              </NavbarItem>
+              <NavbarItem href="#faq">
+                <NavbarLabel>FAQ</NavbarLabel>
               </NavbarItem>
             </NavbarSection>
             <NavbarSpacer />
@@ -191,6 +248,7 @@ export default async function LandingPage() {
                   <div key={metric.title} className="rounded-lg border border-white/15 bg-white/5 px-3 py-3">
                     <p className="text-[11px] font-semibold tracking-wide text-zinc-300 uppercase">{metric.title}</p>
                     <p className="mt-1 text-lg font-semibold text-white">{metric.value}</p>
+                    <p className="mt-1 text-xs text-zinc-300">{metric.detail}</p>
                   </div>
                 ))}
               </div>
@@ -212,11 +270,12 @@ export default async function LandingPage() {
         </section>
 
         <section className="rounded-2xl border border-zinc-950/10 bg-white p-6 shadow-sm">
-          <div className="grid gap-6 lg:grid-cols-[1.25fr_1fr] lg:items-center">
+          <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
             <div>
-              <Subheading>Trusted by Operations Teams Who Need Defensible Outputs</Subheading>
+              <Subheading>Designed for Fast Evaluation and Clear Procurement Signals</Subheading>
               <Text className="mt-2 text-zinc-600">
-                Page structure prioritizes fast scanning: clear scope, trust controls, and one primary next step.
+                Strong landing pages make decision paths obvious. This page keeps one primary CTA, explicit trust controls,
+                and measurable targets visible from first view to pricing.
               </Text>
               <div className="mt-4 flex flex-wrap gap-2">
                 {proofLogos.map((logo) => (
@@ -229,10 +288,10 @@ export default async function LandingPage() {
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-zinc-200 bg-linear-to-br from-zinc-50 to-blue-50 p-5">
-              <p className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Primary next step</p>
-              <p className="mt-2 text-sm font-semibold text-zinc-900">Start with one real questionnaire in a sandbox workspace</p>
-              <Text className="mt-2 text-zinc-600">Run the full import-to-export flow before procurement onboarding.</Text>
+            <div className="rounded-xl border border-blue-200 bg-linear-to-br from-white to-blue-50 p-5">
+              <p className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Evaluation flow</p>
+              <p className="mt-2 text-sm font-semibold text-zinc-900">Run one real questionnaire before procurement onboarding</p>
+              <Text className="mt-2 text-zinc-600">Validate mapping, drafts, approvals, and export fidelity in one pass.</Text>
               <div className="mt-4 flex gap-2">
                 <Button href="/signup" color="blue">
                   Start Free Trial
@@ -242,6 +301,36 @@ export default async function LandingPage() {
                 </Button>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section id="features" className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <Subheading>Platform Modules</Subheading>
+              <Text className="mt-1 text-zinc-600">Core product surfaces used in daily questionnaire operations.</Text>
+            </div>
+            <Badge color="blue">Catalyst UI system</Badge>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {platformModules.map((module) => (
+              <article key={module.title} className="rounded-xl border border-zinc-200 bg-zinc-50 p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-base font-semibold text-zinc-900">{module.title}</p>
+                  <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold tracking-wide text-blue-700 uppercase">
+                    {module.badge}
+                  </span>
+                </div>
+                <Text className="mt-2 text-zinc-600">{module.detail}</Text>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {module.points.map((point) => (
+                    <span key={point} className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700">
+                      {point}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            ))}
           </div>
         </section>
 
@@ -270,19 +359,21 @@ export default async function LandingPage() {
 
         <section className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
           <Subheading>Manual Process vs Copilot Workflow</Subheading>
-          <div className="mt-5 overflow-hidden rounded-xl border border-zinc-200">
-            <div className="grid grid-cols-[0.9fr_1fr_1fr] bg-zinc-50 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
-              <div className="px-4 py-3">Area</div>
-              <div className="px-4 py-3">Traditional process</div>
-              <div className="px-4 py-3">Copilot workflow</div>
-            </div>
-            {comparisonRows.map((row) => (
-              <div key={row.area} className="grid grid-cols-[0.9fr_1fr_1fr] border-t border-zinc-200 text-sm">
-                <div className="px-4 py-3 font-medium text-zinc-900">{row.area}</div>
-                <div className="px-4 py-3 text-zinc-600">{row.manual}</div>
-                <div className="px-4 py-3 text-zinc-800">{row.copilot}</div>
+          <div className="mt-5 overflow-x-auto rounded-xl border border-zinc-200">
+            <div className="min-w-[760px]">
+              <div className="grid grid-cols-[0.9fr_1fr_1fr] bg-zinc-50 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                <div className="px-4 py-3">Area</div>
+                <div className="px-4 py-3">Traditional process</div>
+                <div className="px-4 py-3">Copilot workflow</div>
               </div>
-            ))}
+              {comparisonRows.map((row) => (
+                <div key={row.area} className="grid grid-cols-[0.9fr_1fr_1fr] border-t border-zinc-200 text-sm">
+                  <div className="px-4 py-3 font-medium text-zinc-900">{row.area}</div>
+                  <div className="px-4 py-3 text-zinc-600">{row.manual}</div>
+                  <div className="px-4 py-3 text-zinc-800">{row.copilot}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -302,7 +393,7 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-950/15 bg-linear-to-br from-zinc-950 via-zinc-900 to-zinc-800 p-8 text-white shadow-xl">
+        <section id="trust" className="rounded-2xl border border-zinc-950/15 bg-linear-to-br from-zinc-950 via-zinc-900 to-zinc-800 p-8 text-white shadow-xl">
           <Subheading className="text-white">Security and Governance Controls</Subheading>
           <div className="mt-5 grid gap-6 lg:grid-cols-[1.05fr_1fr]">
             <ul className="space-y-3 text-sm text-zinc-200">
@@ -338,6 +429,24 @@ export default async function LandingPage() {
         </section>
 
         <section className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
+          <Subheading>Go-live Readiness Signals</Subheading>
+          <Text className="mt-2 text-zinc-600">The fastest enterprise pages reduce uncertainty by clarifying what is available now.</Text>
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {readinessPillars.map((pillar) => (
+              <div key={pillar.title} className="rounded-xl border border-zinc-200 bg-zinc-50 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-zinc-900">{pillar.title}</p>
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                    {pillar.status}
+                  </span>
+                </div>
+                <Text className="mt-2 text-zinc-600">{pillar.detail}</Text>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
           <Subheading>Built for vCISO and MSP Teams</Subheading>
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             {audienceCards.map((card) => (
@@ -350,7 +459,7 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
+        <section id="pricing" className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <Subheading>Pricing</Subheading>
@@ -375,7 +484,7 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
+        <section id="faq" className="rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
           <Subheading>FAQ</Subheading>
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {faqItems.map((item) => (
@@ -394,13 +503,19 @@ export default async function LandingPage() {
             Ready to run secure questionnaire operations at scale?
           </Heading>
           <Text className="mt-2 text-zinc-600">Start with one workspace, one questionnaire, and an evidence-first approval flow.</Text>
-          <div className="mt-5 flex justify-center gap-3">
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
             <Button href="/signup" color="blue">
               Start Free Trial
             </Button>
             <Button href="/app" outline>
               Open App
             </Button>
+            <a
+              href="mailto:sales@example.com?subject=Security%20Questionnaire%20Copilot%20Demo"
+              className="inline-flex items-center rounded-lg border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700"
+            >
+              Book Demo
+            </a>
           </div>
         </section>
       </div>
