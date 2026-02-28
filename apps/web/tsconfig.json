@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@sqc/shared": ["../../packages/shared/src/index.ts"],
+      "@sqc/ui-catalyst": ["../../packages/ui-catalyst/src/index.ts"],
+      "@sqc/ui-catalyst/*": ["../../packages/ui-catalyst/src/*"]
+    },
+    "jsx": "preserve",
+    "lib": ["dom", "dom.iterable", "es2022"],
+    "allowJs": false,
+    "incremental": true,
+    "noEmit": true,
+    "plugins": [{ "name": "next" }]
+  },
+  "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

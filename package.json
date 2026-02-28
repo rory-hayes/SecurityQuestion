@@ -1,0 +1,25 @@
+{
+  "name": "security-questionnaire-copilot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Security Questionnaire Copilot MVP",
+  "packageManager": "pnpm@9.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm --filter @sqc/shared build && pnpm --filter @sqc/api build && pnpm --filter @sqc/worker build && pnpm --filter @sqc/web build",
+    "dev": "pnpm --filter @sqc/web dev",
+    "lint": "pnpm lint:ui-governance && pnpm lint:trust-copy",
+    "typecheck": "pnpm --filter @sqc/shared typecheck && pnpm --filter @sqc/api typecheck && pnpm --filter @sqc/worker typecheck",
+    "test": "pnpm -r test",
+    "lint:ui-governance": "node scripts/check-ui-imports.mjs",
+    "lint:trust-copy": "node scripts/lint-trust-copy.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "typescript": "^5.7.3"
+  }
+}
