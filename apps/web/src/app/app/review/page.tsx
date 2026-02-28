@@ -1,7 +1,6 @@
 'use client'
 
 import { Badge, Button, Dialog, DialogActions, DialogBody, DialogDescription, DialogTitle, Heading, Subheading, Text } from '@sqc/ui-catalyst'
-import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { apiRequest } from '@/lib/api-client'
 import { ensureSeeded, getActiveWorkspace, listReviewItems, onStoreUpdate, updateReviewItem } from '@/lib/app-store'
@@ -64,8 +63,8 @@ function toBand(input?: string | null): ConfidenceBand {
 }
 
 export default function ReviewQueuePage() {
-  const searchParams = useSearchParams()
-  const questionnaireId = searchParams.get('questionnaireId')
+  const [questionnaireId, setQuestionnaireId] = useState<string | null>(null)
+  const [queryResolved, setQueryResolved] = useState(false)
   const [drafts, setDrafts] = useState<QueueDraft[]>([])
   const [status, setStatus] = useState<string | null>(null)
   const [apiBacked, setApiBacked] = useState(false)
@@ -76,6 +75,13 @@ export default function ReviewQueuePage() {
   } | null>(null)
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setQuestionnaireId(params.get('questionnaireId'))
+    setQueryResolved(true)
+  }, [])
+
+  useEffect(() => {
+    if (!queryResolved) return
     ensureSeeded()
     let active = true
 
@@ -165,7 +171,7 @@ export default function ReviewQueuePage() {
       active = false
       void Promise.resolve(unsubscribePromise).then((unsubscribe) => unsubscribe?.())
     }
-  }, [questionnaireId])
+  }, [questionnaireId, queryResolved])
 
   function patchDraft(questionId: string, patch: Partial<QueueDraft>) {
     setDrafts((current) => current.map((draft) => (draft.id === questionId ? { ...draft, ...patch } : draft)))
