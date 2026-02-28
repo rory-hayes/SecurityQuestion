@@ -7,3 +7,7 @@ coverage
 *.log
 .DS_Store
 pnpm-lock.yaml
+*.tsbuildinfo
+.playwright-cli
+output/playwright
+apps/web/out

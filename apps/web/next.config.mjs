@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export',
   transpilePackages: ['@sqc/ui-catalyst', '@sqc/shared'],
   typedRoutes: true,
   eslint: {
