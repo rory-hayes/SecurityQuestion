@@ -6,7 +6,10 @@ const redisConnection = {
 }
 
 let importQueue: Queue | null = null
+let documentExtractQueue: Queue | null = null
+let questionnaireNormaliseQueue: Queue | null = null
 let draftingQueue: Queue | null = null
+let questionVerifyQueue: Queue | null = null
 let exportQueue: Queue | null = null
 
 function queueDisabled() {
@@ -19,10 +22,28 @@ export function getImportQueue() {
   return importQueue
 }
 
+export function getDocumentExtractQueue() {
+  if (queueDisabled()) return null
+  if (!documentExtractQueue) documentExtractQueue = new Queue('document-extract', { connection: redisConnection })
+  return documentExtractQueue
+}
+
+export function getQuestionnaireNormaliseQueue() {
+  if (queueDisabled()) return null
+  if (!questionnaireNormaliseQueue) questionnaireNormaliseQueue = new Queue('questionnaire-normalise', { connection: redisConnection })
+  return questionnaireNormaliseQueue
+}
+
 export function getDraftingQueue() {
   if (queueDisabled()) return null
   if (!draftingQueue) draftingQueue = new Queue('questionnaire-drafting', { connection: redisConnection })
   return draftingQueue
+}
+
+export function getQuestionVerifyQueue() {
+  if (queueDisabled()) return null
+  if (!questionVerifyQueue) questionVerifyQueue = new Queue('question-verify', { connection: redisConnection })
+  return questionVerifyQueue
 }
 
 export function getExportQueue() {

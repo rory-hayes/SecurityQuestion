@@ -32,9 +32,14 @@ pnpm --filter @sqc/api dev
 pnpm --filter @sqc/worker dev
 ```
 
+Optional environment flags:
+- `OPENAI_API_KEY`: enables OpenAI-backed mapping fallback and embeddings.
+- `SQC_DISABLE_OPENAI=true`: forces deterministic local fallback behavior.
+- `DISABLE_QUEUES=true`: runs API flows without Redis queue usage.
+
 ## Key routes
 - Web: `/`, `/signup`, `/app`, `/app/workspaces`, `/app/evidence`, `/app/questionnaires`, `/app/review`, `/app/approvals`, `/app/exports`
-- API: `/health`, `/v1/auth/magic-link`, `/v1/auth/magic-link/verify`, `/v1/public/pricing`, `/v1/public/faq`, `/v1/orgs/:id/branding`, `/v1/workspaces`, `/v1/workspaces/:id/documents`, `/v1/workspaces/:id/questions/changed-since-last`, `/v1/workspaces/:id/questionnaires/import`, `/v1/questionnaires/:id/draft`, `/v1/questions/:id/state`, `/v1/questions/:id/approve`, `/v1/questions/:id/evidence/attach`, `/v1/templates/global`, `/v1/workspaces/:id/templates/global/import`, `/v1/questionnaires/:id/export`, `/v1/questionnaires/:id/progress`
+- API: `/health`, `/v1/auth/magic-link`, `/v1/auth/magic-link/verify`, `/v1/public/pricing`, `/v1/public/faq`, `/v1/orgs/:id/branding`, `/v1/workspaces`, `/v1/workspaces/:id/documents/upload-url`, `/v1/workspaces/:id/documents`, `/v1/workspaces/:id/documents/:documentId/process`, `/v1/workspaces/:id/documents/:documentId/status`, `/v1/workspaces/:id/questions/changed-since-last`, `/v1/workspaces/:id/questionnaires/import`, `/v1/workspaces/:id/questionnaires/parse`, `/v1/workspaces/:id/questionnaires/:questionnaireId/mapping/suggest`, `/v1/workspaces/:id/questionnaires/:questionnaireId/mapping/confirm`, `/v1/questionnaires/:id/questions`, `/v1/questionnaires/:id/draft`, `/v1/questions/:id/regenerate`, `/v1/questions/:id/draft-detail`, `/v1/questions/:id/state`, `/v1/questions/:id/approve`, `/v1/questions/:id/evidence/attach`, `/v1/templates/global`, `/v1/workspaces/:id/templates/global/import`, `/v1/questionnaires/:id/export`, `/v1/questionnaires/:id/progress`
 
 ## Tests
 - `pnpm lint`: UI governance + trust copy policy checks.

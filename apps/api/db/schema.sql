@@ -310,3 +310,123 @@ CREATE POLICY workspace_isolation_audit ON audit_log_events
 CREATE POLICY workspace_isolation_metrics ON metric_events
   USING (workspace_id = app.current_workspace_id())
   WITH CHECK (workspace_id = app.current_workspace_id());
+
+-- RAG orchestration and traceability tables.
+CREATE TABLE IF NOT EXISTS document_extractions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  document_id UUID NOT NULL UNIQUE REFERENCES documents(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  parser_version TEXT NOT NULL,
+  failure_reason TEXT,
+  chunk_count INTEGER NOT NULL DEFAULT 0,
+  snippet_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS questionnaire_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  questionnaire_id UUID NOT NULL UNIQUE REFERENCES questionnaires(id) ON DELETE CASCADE,
+  suggestion_json JSONB NOT NULL,
+  confirmed_mapping_json JSONB,
+  confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+  confidence NUMERIC(4,3) NOT NULL,
+  source TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS draft_citations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  question_id UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+  draft_id UUID NOT NULL REFERENCES answer_drafts(id) ON DELETE CASCADE,
+  snippet_id UUID NOT NULL REFERENCES evidence_snippets(id) ON DELETE CASCADE,
+  sentence_index INTEGER NOT NULL DEFAULT 0,
+  relevance_score NUMERIC(5,4) NOT NULL DEFAULT 0,
+  char_start INTEGER NOT NULL,
+  char_end INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS draft_confidence_breakdowns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  draft_id UUID NOT NULL UNIQUE REFERENCES answer_drafts(id) ON DELETE CASCADE,
+  evidence_coverage NUMERIC(5,4) NOT NULL,
+  retrieval_relevance NUMERIC(5,4) NOT NULL,
+  evidence_recency NUMERIC(5,4) NOT NULL,
+  verifier_pass NUMERIC(5,4) NOT NULL,
+  answer_library_alignment NUMERIC(5,4) NOT NULL,
+  total_score NUMERIC(5,4) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS model_traces (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  question_id UUID REFERENCES questions(id) ON DELETE CASCADE,
+  flow TEXT NOT NULL,
+  selected_model TEXT NOT NULL,
+  escalation_model TEXT,
+  escalated BOOLEAN NOT NULL DEFAULT FALSE,
+  reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+  temperature NUMERIC(4,3) NOT NULL DEFAULT 0.1,
+  store BOOLEAN NOT NULL DEFAULT FALSE,
+  latency_ms INTEGER NOT NULL,
+  prompt_tokens INTEGER,
+  completion_tokens INTEGER,
+  request_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS claim_validation_issues (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  question_id UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+  draft_id UUID NOT NULL REFERENCES answer_drafts(id) ON DELETE CASCADE,
+  issue_type TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  message TEXT NOT NULL,
+  sentence_index INTEGER,
+  citation_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE document_extractions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE questionnaire_mappings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE draft_citations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE draft_confidence_breakdowns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE model_traces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE claim_validation_issues ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY workspace_isolation_document_extractions ON document_extractions
+  USING (workspace_id = app.current_workspace_id())
+  WITH CHECK (workspace_id = app.current_workspace_id());
+
+CREATE POLICY workspace_isolation_questionnaire_mappings ON questionnaire_mappings
+  USING (workspace_id = app.current_workspace_id())
+  WITH CHECK (workspace_id = app.current_workspace_id());
+
+CREATE POLICY workspace_isolation_draft_citations ON draft_citations
+  USING (workspace_id = app.current_workspace_id())
+  WITH CHECK (workspace_id = app.current_workspace_id());
+
+CREATE POLICY workspace_isolation_draft_confidence ON draft_confidence_breakdowns
+  USING (workspace_id = app.current_workspace_id())
+  WITH CHECK (workspace_id = app.current_workspace_id());
+
+CREATE POLICY workspace_isolation_model_traces ON model_traces
+  USING (workspace_id = app.current_workspace_id())
+  WITH CHECK (workspace_id = app.current_workspace_id());
+
+CREATE POLICY workspace_isolation_validation_issues ON claim_validation_issues
+  USING (workspace_id = app.current_workspace_id())
+  WITH CHECK (workspace_id = app.current_workspace_id());
+
+CREATE INDEX IF NOT EXISTS idx_text_chunks_workspace_document ON text_chunks(workspace_id, document_id);
+CREATE INDEX IF NOT EXISTS idx_questions_workspace_questionnaire_stable ON questions(workspace_id, questionnaire_id, stable_key);
+CREATE INDEX IF NOT EXISTS idx_draft_citations_question_draft ON draft_citations(question_id, draft_id);
+CREATE INDEX IF NOT EXISTS idx_text_chunks_embedding_hnsw ON text_chunks USING hnsw (embedding vector_cosine_ops);

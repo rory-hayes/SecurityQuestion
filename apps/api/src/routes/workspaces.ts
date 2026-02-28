@@ -5,7 +5,7 @@ import { requireRole } from '../plugins/require-role'
 const createWorkspaceSchema = z.object({
   name: z.string().min(2),
   ownerEmail: z.string().email(),
-  reviewCadence: z.enum(['monthly', 'quarterly', 'custom'])
+  reviewCadence: z.enum(['monthly', 'quarterly', 'custom', '3_months', '6_months', '9_months', '12_months'])
 })
 
 export async function workspaceRoutes(app: FastifyInstance) {
