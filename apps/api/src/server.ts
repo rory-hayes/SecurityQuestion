@@ -40,7 +40,7 @@ async function start() {
   await app.listen({ port, host: '0.0.0.0' })
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module) {
   start().catch((err) => {
     console.error(err)
     process.exit(1)
