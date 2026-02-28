@@ -11,3 +11,5 @@ pnpm-lock.yaml
 .playwright-cli
 output/playwright
 apps/web/out
+.vercel
+**/.vercel

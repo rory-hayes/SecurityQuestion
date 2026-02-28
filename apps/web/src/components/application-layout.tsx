@@ -23,6 +23,7 @@ import {
   SidebarLayout
 } from '@sqc/ui-catalyst'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { WorkspaceBadge } from './workspace-badge'
 
 const NAV_ITEMS = [
@@ -54,6 +55,11 @@ function AccountMenu({ anchor }: { anchor: 'top start' | 'bottom end' }) {
 
 export function ApplicationLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
 
   return (
     <SidebarLayout
@@ -83,7 +89,7 @@ export function ApplicationLayout({ children }: { children: React.ReactNode }) {
           <SidebarBody>
             <SidebarSection>
               {NAV_ITEMS.map((item) => (
-                <SidebarItem key={item.href} href={item.href} current={pathname === item.href}>
+                <SidebarItem key={item.href} href={item.href} current={hydrated && pathname === item.href}>
                   <SidebarLabel>{item.label}</SidebarLabel>
                 </SidebarItem>
               ))}
