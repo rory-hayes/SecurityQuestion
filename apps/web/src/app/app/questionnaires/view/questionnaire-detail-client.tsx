@@ -18,12 +18,47 @@ export default function QuestionnaireDetailClient() {
   const questionnaireId = params.get('questionnaireId') ?? ''
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [record, setRecord] = useState<ReturnType<typeof getQuestionnaireById>>(null)
-  const [pendingAction, setPendingAction] = useState<'draft' | 'progress' | 'export' | null>(null)
+  const [pendingAction, setPendingAction] = useState<'draft' | 'progress' | 'export' | 'normalise' | null>(null)
 
   useEffect(() => {
     if (!questionnaireId) return
     setRecord(getQuestionnaireById(questionnaireId))
   }, [questionnaireId])
+
+  useEffect(() => {
+    if (!questionnaireId || !record?.workspaceId) return
+    const workspaceId = record.workspaceId
+    let cancelled = false
+
+    async function hydrateFromApi() {
+      const [progressResponse, questionsResponse] = await Promise.all([
+        apiRequest<{ percent: number; status: string }>(`/v1/questionnaires/${questionnaireId}/progress`, { workspaceId }),
+        apiRequest<Array<{ id: string; state?: string }>>(`/v1/questionnaires/${questionnaireId}/questions`, { workspaceId })
+      ])
+
+      if (cancelled) return
+
+      const patch: Partial<NonNullable<ReturnType<typeof getQuestionnaireById>>> = {}
+      if (progressResponse.ok && progressResponse.data) {
+        patch.progress = progressResponse.data.percent
+        patch.status = progressResponse.data.status
+      }
+      if (questionsResponse.ok && questionsResponse.data) {
+        patch.totalQuestions = questionsResponse.data.length
+        patch.needsReviewRows = questionsResponse.data.filter((question) => question.state !== 'approved').length
+      }
+
+      if (Object.keys(patch).length > 0) {
+        updateQuestionnaire(questionnaireId, patch)
+        setRecord(getQuestionnaireById(questionnaireId))
+      }
+    }
+
+    void hydrateFromApi()
+    return () => {
+      cancelled = true
+    }
+  }, [questionnaireId, record?.workspaceId])
 
   const ready = useMemo(() => Boolean(questionnaireId && record), [questionnaireId, record])
 
@@ -64,6 +99,53 @@ export default function QuestionnaireDetailClient() {
     updateQuestionnaire(questionnaireId, { status: 'Drafting Started', progress: Math.max(record.progress, 25) })
     setRecord(getQuestionnaireById(questionnaireId))
     setStatusMessage('Drafting started. Refresh progress to fetch latest queue state.')
+  }
+
+  async function completeNormalise() {
+    if (!questionnaireId || !record) return
+    setPendingAction('normalise')
+
+    const suggest = await apiRequest<{
+      suggestion: { headerRowIndex: number; questionColumn: string; answerColumn: string; evidenceColumn?: string }
+    }>(`/v1/workspaces/${record.workspaceId}/questionnaires/${questionnaireId}/mapping/suggest`, {
+      method: 'POST',
+      workspaceId: record.workspaceId,
+      body: {}
+    })
+
+    if (!suggest.ok || !suggest.data?.suggestion) {
+      setPendingAction(null)
+      setStatusMessage(suggest.error ?? 'Could not suggest mapping for this batch.')
+      return
+    }
+
+    const confirm = await apiRequest<{ normalizedCount: number }>(
+      `/v1/workspaces/${record.workspaceId}/questionnaires/${questionnaireId}/mapping/confirm`,
+      {
+        method: 'POST',
+        workspaceId: record.workspaceId,
+        body: {
+          headerRowIndex: suggest.data.suggestion.headerRowIndex,
+          questionColumn: suggest.data.suggestion.questionColumn,
+          answerColumn: suggest.data.suggestion.answerColumn,
+          evidenceColumn: suggest.data.suggestion.evidenceColumn
+        }
+      }
+    )
+
+    setPendingAction(null)
+    if (!confirm.ok || !confirm.data) {
+      setStatusMessage(confirm.error ?? 'Normalise failed for this batch.')
+      return
+    }
+
+    updateQuestionnaire(questionnaireId, {
+      status: 'Normalized',
+      progress: Math.max(record.progress, 20),
+      totalQuestions: confirm.data.normalizedCount
+    })
+    setRecord(getQuestionnaireById(questionnaireId))
+    setStatusMessage(`Normalised ${confirm.data.normalizedCount} questions. You can now start drafting.`)
   }
 
   async function queueExport() {
@@ -155,7 +237,12 @@ export default function QuestionnaireDetailClient() {
       <section className="rounded-xl border border-zinc-950/10 bg-white p-6">
         <Subheading>Actions</Subheading>
         <div className="mt-4 flex flex-wrap gap-3">
-          <Button color="blue" onClick={startDrafting} disabled={pendingAction !== null}>
+          {record.totalQuestions === 0 ? (
+            <Button color="blue" onClick={completeNormalise} disabled={pendingAction !== null}>
+              {pendingAction === 'normalise' ? 'Normalising...' : 'Complete normalisation'}
+            </Button>
+          ) : null}
+          <Button color="blue" onClick={startDrafting} disabled={pendingAction !== null || record.totalQuestions === 0}>
             {pendingAction === 'draft' ? 'Starting draft...' : 'Start drafting'}
           </Button>
           <Button outline onClick={refreshProgress} disabled={pendingAction !== null}>
@@ -168,6 +255,11 @@ export default function QuestionnaireDetailClient() {
             Open review queue
           </Button>
         </div>
+        {record.totalQuestions === 0 ? (
+          <Text className="mt-2 text-sm text-zinc-600">
+            This batch has no normalized questions yet. Run Complete normalisation before drafting.
+          </Text>
+        ) : null}
         {statusMessage ? <Text className="mt-3 text-zinc-700">{statusMessage}</Text> : null}
       </section>
     </div>

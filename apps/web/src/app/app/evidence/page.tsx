@@ -40,6 +40,11 @@ type UploadPreview = {
   reason?: string
 }
 
+function isInlineTextSupported(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase()
+  return extension === 'txt' || extension === 'md' || extension === 'csv'
+}
+
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
@@ -137,16 +142,19 @@ export default function EvidencePage() {
     setStatus('Uploading evidence metadata...')
 
     for (const file of Array.from(files)) {
+      const inlineText = isInlineTextSupported(file.name) ? await file.text() : undefined
       const response = await apiRequest<{ documentId: string; createdAt: string; extractedStatus: string }>(
         `/v1/workspaces/${activeWorkspace.id}/documents`,
         {
           method: 'POST',
           workspaceId: activeWorkspace.id,
           body: {
+            name: file.name,
             docType,
             frameworkTags: ['SOC2', 'ISO27001'],
             owner,
-            lastUpdated: new Date().toISOString().slice(0, 10)
+            lastUpdated: new Date().toISOString().slice(0, 10),
+            text: inlineText
           }
         }
       )
@@ -156,12 +164,26 @@ export default function EvidencePage() {
         return
       }
 
+      const processResponse = await apiRequest<{ status: 'queued' | 'processing' | 'completed' | 'failed' }>(
+        `/v1/workspaces/${activeWorkspace.id}/documents/${response.data.documentId}/process`,
+        {
+          method: 'POST',
+          workspaceId: activeWorkspace.id,
+          body: inlineText ? { text: inlineText } : {}
+        }
+      )
+
+      if (!processResponse.ok || !processResponse.data) {
+        setStatus(processResponse.error ?? `Document extraction failed for ${file.name}.`)
+        return
+      }
+
       addEvidence({
         workspaceId: activeWorkspace.id,
         name: file.name,
         docType,
         owner,
-        status: 'queued',
+        status: processResponse.data.status === 'completed' ? 'ready' : 'queued',
         reviewCadenceMonths: activeWorkspace.reviewCadenceMonths
       })
     }

@@ -314,6 +314,28 @@ export async function questionnaireRoutes(app: FastifyInstance) {
       return reply.code(check.status).send({ message: check.message })
     }
 
+    let questions = listQuestionsForQuestionnaire(questionnaireId)
+    if (questions.length === 0) {
+      const existingMapping = getMapping(questionnaireId)
+      const suggestionResult = existingMapping ? null : await suggestQuestionnaireMapping(questionnaireId)
+      const suggestion = existingMapping?.suggestion ?? suggestionResult?.suggestion
+      if (suggestion) {
+        confirmQuestionnaireMapping(questionnaireId, {
+          headerRowIndex: suggestion.headerRowIndex,
+          questionColumn: suggestion.questionColumn,
+          answerColumn: suggestion.answerColumn,
+          evidenceColumn: suggestion.evidenceColumn
+        })
+      }
+      questions = listQuestionsForQuestionnaire(questionnaireId)
+    }
+
+    if (questions.length === 0) {
+      return reply.code(409).send({
+        message: 'No normalized questions are available for drafting. Confirm questionnaire mapping and run normalise first.'
+      })
+    }
+
     const queue = getDraftingQueue()
     if (queue) {
       await queue.add(

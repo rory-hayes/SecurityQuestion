@@ -24,6 +24,11 @@ function toApiCadence(months: number): 'monthly' | 'quarterly' | 'custom' {
   return 'custom'
 }
 
+function isInlineTextSupported(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase()
+  return extension === 'txt' || extension === 'md' || extension === 'csv'
+}
+
 export default function WorkspaceOnboardingPage() {
   const router = useRouter()
   const [status, setStatus] = useState<string | null>(null)
@@ -73,14 +78,17 @@ export default function WorkspaceOnboardingPage() {
     if (files && files.length > 0) {
       setStatus('Uploading knowledge base metadata...')
       for (const file of Array.from(files)) {
+        const inlineText = isInlineTextSupported(file.name) ? await file.text() : undefined
         const docResult = await apiRequest<{ documentId: string }>(`/v1/workspaces/${workspace.id}/documents`, {
           method: 'POST',
           workspaceId: workspace.id,
           body: {
+            name: file.name,
             docType: 'Policy',
             frameworkTags: ['SOC2'],
             owner: approverEmail,
-            lastUpdated: new Date().toISOString().slice(0, 10)
+            lastUpdated: new Date().toISOString().slice(0, 10),
+            text: inlineText
           }
         })
 
@@ -90,12 +98,27 @@ export default function WorkspaceOnboardingPage() {
           return
         }
 
+        const processResult = await apiRequest<{ status: 'queued' | 'processing' | 'completed' | 'failed' }>(
+          `/v1/workspaces/${workspace.id}/documents/${docResult.data.documentId}/process`,
+          {
+            method: 'POST',
+            workspaceId: workspace.id,
+            body: inlineText ? { text: inlineText } : {}
+          }
+        )
+
+        if (!processResult.ok || !processResult.data) {
+          setStatus(processResult.error ?? `Failed to process extraction for ${file.name}.`)
+          setIsSubmitting(false)
+          return
+        }
+
         addEvidence({
           workspaceId: workspace.id,
           name: file.name,
           docType: 'Policy',
           owner: approverEmail,
-          status: 'queued',
+          status: processResult.data.status === 'completed' ? 'ready' : 'queued',
           reviewCadenceMonths
         })
       }
