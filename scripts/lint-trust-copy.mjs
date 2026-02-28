@@ -10,7 +10,15 @@ const bannedPhrases = [
   'no human needed'
 ]
 
-const out = execSync('rg --files apps/web/src', { encoding: 'utf8' })
+function listFiles() {
+  try {
+    return execSync('rg --files apps/web/src', { encoding: 'utf8' })
+  } catch {
+    return execSync('git ls-files apps/web/src', { encoding: 'utf8' })
+  }
+}
+
+const out = listFiles()
 const files = out
   .split('\n')
   .filter(Boolean)

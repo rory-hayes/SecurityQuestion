@@ -3,7 +3,15 @@ import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
 const banned = ['@mui/', '@chakra-ui/', 'antd', 'shadcn', '@/components/ui/']
-const out = execSync('rg --files apps packages', { encoding: 'utf8' })
+function listFiles() {
+  try {
+    return execSync('rg --files apps packages', { encoding: 'utf8' })
+  } catch {
+    return execSync('git ls-files apps packages', { encoding: 'utf8' })
+  }
+}
+
+const out = listFiles()
 const files = out
   .split('\n')
   .filter(Boolean)
