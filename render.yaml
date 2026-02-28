@@ -17,3 +17,5 @@ services:
         value: 127.0.0.1
       - key: REDIS_PORT
         value: "6379"
+      - key: OPENAI_API_KEY
+        sync: false
