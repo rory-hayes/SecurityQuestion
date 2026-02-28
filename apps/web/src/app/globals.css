@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@source "../../../../packages/ui-catalyst/src/**/*.{ts,tsx}";
+@source "../**/*.{ts,tsx}";
 
 @theme {
   --font-sans: Inter, sans-serif;

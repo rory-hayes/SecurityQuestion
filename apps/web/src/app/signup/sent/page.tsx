@@ -12,6 +12,9 @@ export default function MagicLinkSentPage() {
           <Button href="/app/onboarding/workspace" color="blue">
             Continue to workspace setup
           </Button>
+          <Button href="/app" outline>
+            Open demo workspace
+          </Button>
           <Button href="/" outline>
             Return to home
           </Button>
