@@ -1,3 +1,5 @@
+'use client'
+
 import {
   Badge,
   Heading,
@@ -11,36 +13,14 @@ import {
   TableRow,
   Text
 } from '@sqc/ui-catalyst'
+import { useEffect, useMemo, useState } from 'react'
+import { ensureSeeded, listQuestionnaires, onStoreUpdate } from '@/lib/app-store'
 
 const metrics = [
   { label: 'Median import to export', value: '2h 18m', delta: '+18%' },
   { label: 'Usable auto-drafts', value: '74%', delta: '+4%' },
   { label: 'Major edit rate', value: '24%', delta: '-6%' },
   { label: 'Library reuse rate', value: '52%', delta: '+7%' }
-]
-
-const recentBatches = [
-  {
-    id: 'Q-8831',
-    created: 'Feb 28, 2026',
-    workspace: 'Acme Health',
-    stage: 'In Review',
-    completion: '76%'
-  },
-  {
-    id: 'Q-8826',
-    created: 'Feb 27, 2026',
-    workspace: 'Northwind SaaS',
-    stage: 'Needs Client Input',
-    completion: '63%'
-  },
-  {
-    id: 'Q-8809',
-    created: 'Feb 26, 2026',
-    workspace: 'Delta Payments',
-    stage: 'Approved',
-    completion: '100%'
-  }
 ]
 
 function deltaBadge(delta: string) {
@@ -52,10 +32,24 @@ function deltaBadge(delta: string) {
 function stageBadge(stage: string) {
   if (stage === 'Approved') return <Badge color="green">{stage}</Badge>
   if (stage === 'Needs Client Input') return <Badge color="amber">{stage}</Badge>
-  return <Badge color="blue">{stage}</Badge>
+  if (stage === 'Exported') return <Badge color="blue">{stage}</Badge>
+  return <Badge color="zinc">{stage}</Badge>
 }
 
 export default function DashboardPage() {
+  const [batches, setBatches] = useState<ReturnType<typeof listQuestionnaires>>([])
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    ensureSeeded()
+    const refresh = () => setBatches(listQuestionnaires())
+    refresh()
+    setReady(true)
+    return onStoreUpdate(refresh)
+  }, [])
+
+  const recentBatches = useMemo(() => batches.slice(0, 3), [batches])
+
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -90,21 +84,23 @@ export default function DashboardPage() {
               <TableRow>
                 <TableHeader>Batch ID</TableHeader>
                 <TableHeader>Created</TableHeader>
-                <TableHeader>Workspace</TableHeader>
+                <TableHeader>File</TableHeader>
                 <TableHeader>Stage</TableHeader>
                 <TableHeader>Completion</TableHeader>
               </TableRow>
             </TableHead>
             <TableBody>
-              {recentBatches.map((batch) => (
-                <TableRow key={batch.id}>
-                  <TableCell>{batch.id}</TableCell>
-                  <TableCell>{batch.created}</TableCell>
-                  <TableCell>{batch.workspace}</TableCell>
-                  <TableCell>{stageBadge(batch.stage)}</TableCell>
-                  <TableCell>{batch.completion}</TableCell>
-                </TableRow>
-              ))}
+              {ready
+                ? recentBatches.map((batch) => (
+                    <TableRow key={batch.id} href={`/app/questionnaires/view?questionnaireId=${encodeURIComponent(batch.id)}`}>
+                      <TableCell>{batch.id}</TableCell>
+                      <TableCell>{new Date(batch.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{batch.fileName}</TableCell>
+                      <TableCell>{stageBadge(batch.status)}</TableCell>
+                      <TableCell>{batch.progress}%</TableCell>
+                    </TableRow>
+                  ))
+                : null}
             </TableBody>
           </Table>
         </div>

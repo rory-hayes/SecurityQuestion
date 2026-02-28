@@ -28,7 +28,8 @@ import {
   SidebarLayout
 } from '@sqc/ui-catalyst'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { ensureSeeded, getActiveWorkspace, onStoreUpdate } from '@/lib/app-store'
 import { WorkspaceBadge } from './workspace-badge'
 
 type IconProps = { className?: string }
@@ -109,7 +110,7 @@ function AccountMenu({ anchor }: { anchor: 'top start' | 'bottom end' }) {
         <DropdownLabel>Create workspace</DropdownLabel>
       </DropdownItem>
       <DropdownDivider />
-      <DropdownItem href="/signup">
+      <DropdownItem href="/login">
         <DropdownLabel>Sign out</DropdownLabel>
       </DropdownItem>
     </DropdownMenu>
@@ -119,17 +120,35 @@ function AccountMenu({ anchor }: { anchor: 'top start' | 'bottom end' }) {
 export function ApplicationLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [hydrated, setHydrated] = useState(false)
+  const [workspaceName, setWorkspaceName] = useState('Acme Health')
 
   useEffect(() => {
+    ensureSeeded()
+    const update = () => {
+      const active = getActiveWorkspace()
+      setWorkspaceName(active?.name ?? 'Acme Health')
+    }
+    update()
+    const off = onStoreUpdate(update)
     setHydrated(true)
+    return off
   }, [])
+
+  const isCurrent = useMemo(
+    () =>
+      (href: string) => {
+        if (!hydrated) return false
+        return pathname === href || pathname.startsWith(`${href}/`)
+      },
+    [hydrated, pathname]
+  )
 
   return (
     <SidebarLayout
       navbar={
         <Navbar>
           <NavbarSection className="gap-2">
-            <WorkspaceBadge workspaceName="Acme Health" />
+            <WorkspaceBadge workspaceName={workspaceName} />
             <NavbarDivider className="max-sm:hidden" />
             <NavbarItem href="/">
               <NavbarLabel>Public Site</NavbarLabel>
@@ -165,7 +184,7 @@ export function ApplicationLayout({ children }: { children: React.ReactNode }) {
           <SidebarBody>
             <SidebarSection>
               {NAV_ITEMS.map((item) => (
-                <SidebarItem key={item.href} href={item.href} current={hydrated && pathname === item.href}>
+                <SidebarItem key={item.href} href={item.href} current={isCurrent(item.href)}>
                   <item.icon className="fill-current" />
                   <SidebarLabel>{item.label}</SidebarLabel>
                 </SidebarItem>
@@ -174,19 +193,19 @@ export function ApplicationLayout({ children }: { children: React.ReactNode }) {
             <SidebarDivider />
             <SidebarSection>
               <SidebarHeading>Upcoming Questionnaires</SidebarHeading>
-              <SidebarItem href="/app/questionnaires">
+              <SidebarItem href="/app/questionnaires/view?questionnaireId=Q-8831">
                 <SidebarLabel>Healthcare Buyer RFP</SidebarLabel>
               </SidebarItem>
-              <SidebarItem href="/app/review">
+              <SidebarItem href="/app/questionnaires/view?questionnaireId=Q-8826">
                 <SidebarLabel>Banking DDQ - Low Confidence</SidebarLabel>
               </SidebarItem>
             </SidebarSection>
             <SidebarSpacer />
             <SidebarSection>
-              <SidebarItem href="/app/review">
+              <SidebarItem href="/app/support" current={isCurrent('/app/support')}>
                 <SidebarLabel>Support</SidebarLabel>
               </SidebarItem>
-              <SidebarItem href="/app/approvals">
+              <SidebarItem href="/app/changelog" current={isCurrent('/app/changelog')}>
                 <SidebarLabel>Changelog</SidebarLabel>
               </SidebarItem>
             </SidebarSection>
