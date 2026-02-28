@@ -30,10 +30,27 @@ import {
   onStoreUpdate
 } from '@/lib/app-store'
 
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024
+const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'xlsx', 'xls', 'png', 'jpg', 'jpeg']
+
+type UploadPreview = {
+  name: string
+  size: number
+  valid: boolean
+  reason?: string
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export default function EvidencePage() {
   const [records, setRecords] = useState<ReturnType<typeof listEvidence>>([])
   const [activeWorkspace, setActiveWorkspace] = useState<ReturnType<typeof getActiveWorkspace>>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [uploadPreview, setUploadPreview] = useState<UploadPreview[]>([])
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -45,6 +62,48 @@ export default function EvidencePage() {
     refresh()
     return onStoreUpdate(refresh)
   }, [])
+
+  function onFilesSelected() {
+    const files = fileRef.current?.files
+    if (!files || files.length === 0) {
+      setUploadPreview([])
+      return
+    }
+
+    const nextPreview = Array.from(files).map((file) => {
+      const extension = file.name.split('.').pop()?.toLowerCase()
+      if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
+        return {
+          name: file.name,
+          size: file.size,
+          valid: false,
+          reason: `Unsupported file type .${extension ?? 'unknown'}`
+        }
+      }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        return {
+          name: file.name,
+          size: file.size,
+          valid: false,
+          reason: 'File exceeds 25 MB limit'
+        }
+      }
+      return {
+        name: file.name,
+        size: file.size,
+        valid: true
+      }
+    })
+
+    setUploadPreview(nextPreview)
+
+    const invalid = nextPreview.filter((item) => !item.valid)
+    if (invalid.length) {
+      setStatus(`Resolve ${invalid.length} file validation issue(s) before upload.`)
+      return
+    }
+    setStatus(`${nextPreview.length} file(s) ready. Upload will create evidence records and queue extraction.`)
+  }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -59,11 +118,19 @@ export default function EvidencePage() {
       setStatus('Select at least one document to upload.')
       return
     }
+    if (uploadPreview.some((item) => !item.valid)) {
+      setStatus('One or more selected files are invalid. Fix file type/size issues before uploading.')
+      return
+    }
 
     const owner = String(form.get('owner') ?? '').trim()
     const docType = String(form.get('docType') ?? 'Policy')
     if (!owner) {
       setStatus('Owner is required.')
+      return
+    }
+    if (!window.confirm(`Upload ${files.length} evidence file(s) to ${activeWorkspace.name}?`)) {
+      setStatus('Upload cancelled.')
       return
     }
 
@@ -100,6 +167,7 @@ export default function EvidencePage() {
     }
 
     event.currentTarget.reset()
+    setUploadPreview([])
     setStatus('Evidence uploaded and queued for extraction.')
   }
 
@@ -117,7 +185,17 @@ export default function EvidencePage() {
             <FieldGroup>
               <Field>
                 <Label>Files</Label>
-                <Input ref={fileRef} type="file" name="files" multiple />
+                <Input
+                  ref={fileRef}
+                  type="file"
+                  name="files"
+                  multiple
+                  accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.md,.csv,.xlsx,.xls,.png,.jpg,.jpeg"
+                  onChange={onFilesSelected}
+                />
+                <Text className="mt-2 text-xs text-zinc-500">
+                  Supported: PDF, Office docs, text, spreadsheet, and common image files. Max size 25 MB per file.
+                </Text>
               </Field>
               <Field>
                 <Label>Document type</Label>
@@ -137,6 +215,21 @@ export default function EvidencePage() {
           <Button color="blue" type="submit">
             Upload evidence
           </Button>
+          {uploadPreview.length ? (
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+              <p className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Upload preview</p>
+              <ul className="mt-2 space-y-2 text-sm text-zinc-700">
+                {uploadPreview.map((item) => (
+                  <li key={item.name} className="flex flex-wrap items-center justify-between gap-2">
+                    <span>{item.name}</span>
+                    <span className={item.valid ? 'text-zinc-500' : 'text-red-700'}>
+                      {formatFileSize(item.size)} {item.valid ? 'ready' : `- ${item.reason}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {status ? <Text className="text-zinc-700">{status}</Text> : null}
         </form>
       </section>

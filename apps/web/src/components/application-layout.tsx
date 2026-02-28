@@ -202,10 +202,10 @@ export function ApplicationLayout({ children }: { children: React.ReactNode }) {
             </SidebarSection>
             <SidebarSpacer />
             <SidebarSection>
-              <SidebarItem href="/app/support" current={isCurrent('/app/support')}>
+              <SidebarItem href="/app/review" current={isCurrent('/app/review')}>
                 <SidebarLabel>Support</SidebarLabel>
               </SidebarItem>
-              <SidebarItem href="/app/changelog" current={isCurrent('/app/changelog')}>
+              <SidebarItem href="/app/approvals" current={isCurrent('/app/approvals')}>
                 <SidebarLabel>Changelog</SidebarLabel>
               </SidebarItem>
             </SidebarSection>

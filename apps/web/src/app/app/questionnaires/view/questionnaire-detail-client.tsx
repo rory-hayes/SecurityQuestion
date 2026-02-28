@@ -18,6 +18,7 @@ export default function QuestionnaireDetailClient() {
   const questionnaireId = params.get('questionnaireId') ?? ''
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [record, setRecord] = useState<ReturnType<typeof getQuestionnaireById>>(null)
+  const [pendingAction, setPendingAction] = useState<'draft' | 'progress' | 'export' | null>(null)
 
   useEffect(() => {
     if (!questionnaireId) return
@@ -28,7 +29,11 @@ export default function QuestionnaireDetailClient() {
 
   async function refreshProgress() {
     if (!questionnaireId || !record) return
-    const response = await apiRequest<{ percent: number; status: string }>(`/v1/questionnaires/${questionnaireId}/progress`)
+    setPendingAction('progress')
+    const response = await apiRequest<{ percent: number; status: string }>(`/v1/questionnaires/${questionnaireId}/progress`, {
+      workspaceId: record.workspaceId
+    })
+    setPendingAction(null)
     if (!response.ok || !response.data) {
       setStatusMessage('No live progress available yet. This batch may still be in seeded/demo state.')
       return
@@ -41,11 +46,18 @@ export default function QuestionnaireDetailClient() {
 
   async function startDrafting() {
     if (!questionnaireId || !record) return
+    setPendingAction('draft')
     const response = await apiRequest<{ status: string }>(`/v1/questionnaires/${questionnaireId}/draft`, {
-      method: 'POST'
+      method: 'POST',
+      workspaceId: record.workspaceId,
+      body: {
+        mode: 'batch',
+        modelRouteMode: 'balanced'
+      }
     })
+    setPendingAction(null)
     if (!response.ok) {
-      setStatusMessage(response.error ?? 'Drafting request failed.')
+      setStatusMessage(response.error ?? 'Drafting request failed. Check mapping/normalisation and retry.')
       return
     }
 
@@ -56,11 +68,30 @@ export default function QuestionnaireDetailClient() {
 
   async function queueExport() {
     if (!questionnaireId || !record) return
+    if (!window.confirm('Queue export now? This will enforce confidence, citation, and approval gates.')) return
+    setPendingAction('export')
     const response = await apiRequest<{ status: string }>(`/v1/questionnaires/${questionnaireId}/export`, {
-      method: 'POST'
+      method: 'POST',
+      workspaceId: record.workspaceId
     })
+    setPendingAction(null)
     if (!response.ok) {
-      setStatusMessage(response.error ?? 'Export request failed.')
+      const blockers = Array.isArray(response.payload?.blockers)
+        ? response.payload.blockers
+            .map((item) => {
+              if (!item || typeof item !== 'object') return null
+              const questionId = typeof item.questionId === 'string' ? item.questionId : 'Unknown question'
+              const reason = typeof item.reason === 'string' ? item.reason : 'Unspecified blocker'
+              return `${questionId}: ${reason}`
+            })
+            .filter(Boolean)
+            .join(' | ')
+        : null
+      setStatusMessage(
+        blockers
+          ? `Export blocked: ${blockers}`
+          : response.error ?? 'Export request failed. Resolve approvals/citations and retry.'
+      )
       return
     }
 
@@ -124,16 +155,16 @@ export default function QuestionnaireDetailClient() {
       <section className="rounded-xl border border-zinc-950/10 bg-white p-6">
         <Subheading>Actions</Subheading>
         <div className="mt-4 flex flex-wrap gap-3">
-          <Button color="blue" onClick={startDrafting}>
-            Start drafting
+          <Button color="blue" onClick={startDrafting} disabled={pendingAction !== null}>
+            {pendingAction === 'draft' ? 'Starting draft...' : 'Start drafting'}
           </Button>
-          <Button outline onClick={refreshProgress}>
-            Refresh progress
+          <Button outline onClick={refreshProgress} disabled={pendingAction !== null}>
+            {pendingAction === 'progress' ? 'Refreshing...' : 'Refresh progress'}
           </Button>
-          <Button outline onClick={queueExport}>
-            Queue export
+          <Button outline onClick={queueExport} disabled={pendingAction !== null}>
+            {pendingAction === 'export' ? 'Queueing export...' : 'Queue export'}
           </Button>
-          <Button href="/app/review" plain>
+          <Button href={`/app/review?questionnaireId=${encodeURIComponent(questionnaireId)}`} plain>
             Open review queue
           </Button>
         </div>

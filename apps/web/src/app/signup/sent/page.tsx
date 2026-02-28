@@ -1,25 +1,22 @@
-import { Button, Heading, Text } from '@sqc/ui-catalyst'
+import { AuthLayout, Button, Heading, Text } from '@sqc/ui-catalyst'
 
-export default function MagicLinkSentPage() {
+export default function SignupSentPage() {
   return (
-    <main className="mx-auto flex min-h-[70vh] max-w-2xl items-center justify-center px-6">
-      <section className="w-full rounded-2xl border border-zinc-200 bg-white p-10 text-center shadow-sm">
+    <AuthLayout>
+      <div className="mx-auto w-full max-w-md rounded-2xl border border-zinc-950/10 bg-white p-8 shadow-sm">
         <Heading>Check your email</Heading>
-        <Text className="mt-3 text-zinc-600">
-          A secure magic link has been sent. After sign-in, continue to create your first client workspace.
+        <Text className="mt-2 text-zinc-600">
+          Your trial setup link has been sent. Continue to the app to create your first client workspace and upload evidence.
         </Text>
-        <div className="mt-6 flex justify-center gap-3">
-          <Button href="/app/onboarding/workspace" color="blue">
-            Continue to workspace setup
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Button color="blue" href="/app/onboarding/workspace">
+            Create workspace
           </Button>
-          <Button href="/app" outline>
-            Open demo workspace
-          </Button>
-          <Button href="/" outline>
-            Return to home
+          <Button outline href="/signup">
+            Back to signup
           </Button>
         </div>
-      </section>
-    </main>
+      </div>
+    </AuthLayout>
   )
 }

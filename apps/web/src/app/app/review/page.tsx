@@ -1,24 +1,183 @@
 'use client'
 
-import { Badge, Button, Heading, Subheading, Text } from '@sqc/ui-catalyst'
+import { Badge, Button, Dialog, DialogActions, DialogBody, DialogDescription, DialogTitle, Heading, Subheading, Text } from '@sqc/ui-catalyst'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { apiRequest } from '@/lib/api-client'
-import { ensureSeeded, listReviewItems, onStoreUpdate, updateReviewItem } from '@/lib/app-store'
+import { ensureSeeded, getActiveWorkspace, listReviewItems, onStoreUpdate, updateReviewItem } from '@/lib/app-store'
+
+type DraftState = 'drafted' | 'in_review' | 'needs_client_input' | 'approved' | 'exported'
+type ConfidenceBand = 'High' | 'Medium' | 'Low'
+
+type CitationDetail = {
+  label: string
+  snippetId?: string
+  documentId?: string
+  chunkId?: string
+  excerpt?: string
+  sentenceIndex?: number
+  relevanceScore?: number
+  charStart?: number
+  charEnd?: number
+}
+
+type QueueDraft = {
+  id: string
+  question: string
+  answer: string
+  confidence: ConfidenceBand
+  citations: string[]
+  citationDetails: CitationDetail[]
+  state: DraftState
+  source: 'api' | 'seed'
+}
+
+type ApiQuestion = {
+  id: string
+  prompt: string
+  state?: DraftState
+  confidenceBand?: 'high' | 'medium' | 'low' | null
+}
+
+type ApiDraftDetail = {
+  questionId: string
+  text: string
+  confidenceBand: 'high' | 'medium' | 'low'
+  citations: Array<{
+    snippetId?: string
+    documentId?: string
+    chunkId?: string
+    excerpt?: string
+    sentenceIndex?: number
+    relevanceScore?: number
+    charStart?: number
+    charEnd?: number
+  }>
+}
+
+const EMPTY_CITATION = 'No evidence found'
+
+function toBand(input?: string | null): ConfidenceBand {
+  if (input === 'high' || input === 'High') return 'High'
+  if (input === 'medium' || input === 'Medium') return 'Medium'
+  return 'Low'
+}
 
 export default function ReviewQueuePage() {
-  const [drafts, setDrafts] = useState<ReturnType<typeof listReviewItems>>([])
+  const searchParams = useSearchParams()
+  const questionnaireId = searchParams.get('questionnaireId')
+  const [drafts, setDrafts] = useState<QueueDraft[]>([])
   const [status, setStatus] = useState<string | null>(null)
+  const [apiBacked, setApiBacked] = useState(false)
+  const [selectedCitation, setSelectedCitation] = useState<{
+    questionId: string
+    question: string
+    citation: CitationDetail
+  } | null>(null)
 
   useEffect(() => {
     ensureSeeded()
-    const refresh = () => setDrafts(listReviewItems())
-    refresh()
-    return onStoreUpdate(refresh)
-  }, [])
+    let active = true
+
+    async function load() {
+      if (!questionnaireId) {
+        setApiBacked(false)
+        const refresh = () =>
+          setDrafts(
+            listReviewItems().map((item) => ({
+              ...item,
+              citationDetails: item.citations.map((citation) => ({ label: citation })),
+              source: 'seed' as const
+            }))
+          )
+        refresh()
+        return onStoreUpdate(refresh)
+      }
+
+      const workspaceId = getActiveWorkspace()?.id
+      const questionsResponse = await apiRequest<ApiQuestion[]>(`/v1/questionnaires/${questionnaireId}/questions`, {
+        workspaceId: workspaceId ?? undefined
+      })
+
+      if (!active) return () => undefined
+
+      if (!questionsResponse.ok || !questionsResponse.data) {
+        setApiBacked(false)
+        setStatus(
+          questionsResponse.error ??
+            'Unable to load live review queue for this batch. Showing seeded queue while API data is unavailable.'
+        )
+        setDrafts(
+          listReviewItems().map((item) => ({
+            ...item,
+            citationDetails: item.citations.map((citation) => ({ label: citation })),
+            source: 'seed' as const
+          }))
+        )
+        return () => undefined
+      }
+
+      const detailResponses = await Promise.all(
+        questionsResponse.data.map(async (question) => {
+          const detail = await apiRequest<ApiDraftDetail>(`/v1/questions/${question.id}/draft-detail`, {
+            workspaceId: workspaceId ?? undefined
+          })
+          return { question, detail }
+        })
+      )
+
+      if (!active) return () => undefined
+
+      const nextDrafts: QueueDraft[] = detailResponses.map(({ question, detail }) => {
+        const citations = detail.data?.citations ?? []
+        const citationDetails = citations.map((citation, index) => ({
+          label: citation.snippetId ?? citation.documentId ?? `Citation ${index + 1}`,
+          snippetId: citation.snippetId,
+          documentId: citation.documentId,
+          chunkId: citation.chunkId,
+          excerpt: citation.excerpt,
+          sentenceIndex: citation.sentenceIndex,
+          relevanceScore: citation.relevanceScore,
+          charStart: citation.charStart,
+          charEnd: citation.charEnd
+        }))
+
+        return {
+          id: question.id,
+          question: question.prompt,
+          answer: detail.data?.text ?? 'Draft not generated yet. Start drafting from the questionnaire batch view.',
+          confidence: toBand(detail.data?.confidenceBand ?? question.confidenceBand),
+          state: question.state ?? 'drafted',
+          citations: citationDetails.length ? citationDetails.map((citation) => citation.label) : [],
+          citationDetails,
+          source: 'api'
+        }
+      })
+
+      setApiBacked(true)
+      setDrafts(nextDrafts)
+      setStatus(nextDrafts.length ? null : 'No questions are available in this batch yet.')
+      return () => undefined
+    }
+
+    const unsubscribePromise = load()
+    return () => {
+      active = false
+      void Promise.resolve(unsubscribePromise).then((unsubscribe) => unsubscribe?.())
+    }
+  }, [questionnaireId])
+
+  function patchDraft(questionId: string, patch: Partial<QueueDraft>) {
+    setDrafts((current) => current.map((draft) => (draft.id === questionId ? { ...draft, ...patch } : draft)))
+  }
 
   async function setQuestionState(questionId: string, nextState: 'in_review' | 'needs_client_input' | 'approved') {
+    if (!apiBacked) return true
+
+    const workspaceId = getActiveWorkspace()?.id
     const response = await apiRequest<{ changedAt: string }>(`/v1/questions/${questionId}/state`, {
       method: 'PATCH',
+      workspaceId: workspaceId ?? undefined,
       body: { state: nextState }
     })
     if (!response.ok) {
@@ -29,38 +188,71 @@ export default function ReviewQueuePage() {
   }
 
   async function approveQuestion(questionId: string) {
+    if (!window.confirm('Approve this draft for export workflow?')) return
+
     const stateOk = await setQuestionState(questionId, 'approved')
     if (!stateOk) return
 
-    const approval = await apiRequest<{ approvedAt: string }>(`/v1/questions/${questionId}/approve`, {
-      method: 'POST',
-      roles: 'org_admin,client_approver',
-      body: {
-        approvedBy: 'client.owner@acmehealth.example',
-        comment: 'Approved after citation review.'
-      }
-    })
+    let approvalAt = new Date().toISOString()
+    if (apiBacked) {
+      const workspaceId = getActiveWorkspace()?.id
+      const approval = await apiRequest<{ approvedAt: string }>(`/v1/questions/${questionId}/approve`, {
+        method: 'POST',
+        workspaceId: workspaceId ?? undefined,
+        roles: 'org_admin,client_approver',
+        body: {
+          approvedBy: 'client.owner@acmehealth.example',
+          comment: 'Approved after citation review.'
+        }
+      })
 
-    if (!approval.ok) {
-      setStatus(approval.error ?? 'Approval failed.')
-      return
+      if (!approval.ok) {
+        setStatus(approval.error ?? 'Approval failed.')
+        return
+      }
+      approvalAt = approval.data?.approvedAt ?? approvalAt
     }
 
-    updateReviewItem(questionId, { state: 'approved' })
-    setStatus(`Question ${questionId} approved at ${new Date(approval.data?.approvedAt ?? new Date().toISOString()).toLocaleString()}.`)
+    patchDraft(questionId, { state: 'approved' })
+    if (!apiBacked) {
+      updateReviewItem(questionId, { state: 'approved' })
+    }
+    setStatus(`Question ${questionId} approved at ${new Date(approvalAt).toLocaleString()}.`)
   }
 
   async function assignClientInput(questionId: string) {
+    if (!window.confirm('Move this draft to client input queue?')) return
     const stateOk = await setQuestionState(questionId, 'needs_client_input')
     if (!stateOk) return
-    updateReviewItem(questionId, { state: 'needs_client_input' })
+    patchDraft(questionId, { state: 'needs_client_input' })
+    if (!apiBacked) {
+      updateReviewItem(questionId, { state: 'needs_client_input' })
+    }
     setStatus(`Question ${questionId} moved to needs client input.`)
   }
 
   async function acknowledgeLowConfidence(questionId: string) {
-    const stateOk = await setQuestionState(questionId, 'in_review')
+    if (!window.confirm('Acknowledge low confidence and keep this draft in review?')) return
+    const workspaceId = getActiveWorkspace()?.id
+    let stateOk = false
+    if (apiBacked) {
+      const response = await apiRequest<{ changedAt: string }>(`/v1/questions/${questionId}/state`, {
+        method: 'PATCH',
+        workspaceId: workspaceId ?? undefined,
+        body: { state: 'in_review', note: 'acknowledge_low_confidence' }
+      })
+      stateOk = response.ok
+      if (!response.ok) {
+        setStatus(response.error ?? 'Failed to acknowledge low confidence.')
+      }
+    } else {
+      stateOk = await setQuestionState(questionId, 'in_review')
+    }
     if (!stateOk) return
-    updateReviewItem(questionId, { state: 'in_review' })
+    patchDraft(questionId, { state: 'in_review' })
+    if (!apiBacked) {
+      updateReviewItem(questionId, { state: 'in_review' })
+    }
     setStatus(`Low-confidence acknowledgment recorded for ${questionId}.`)
   }
 
@@ -80,6 +272,11 @@ export default function ReviewQueuePage() {
           </Button>
         </div>
       </header>
+      <Text className="text-sm text-zinc-600">
+        {questionnaireId
+          ? `Showing live queue for batch ${questionnaireId}.`
+          : 'Showing seeded queue. Open a questionnaire batch and click "Open review queue" for live API-backed drafts.'}
+      </Text>
 
       {status ? (
         <div className="rounded-lg border border-zinc-950/10 bg-white px-4 py-3 text-sm text-zinc-700">{status}</div>
@@ -102,15 +299,21 @@ export default function ReviewQueuePage() {
             <p className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">Source citations</p>
             {draft.citations.length ? (
               <ul className="mt-2 flex flex-wrap gap-2">
-                {draft.citations.map((citation) => (
-                  <li key={citation} className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700">
-                    {citation}
+                {draft.citationDetails.map((citation) => (
+                  <li key={`${draft.id}-${citation.label}-${citation.snippetId ?? 'seed'}`}>
+                    <Button
+                      outline
+                      onClick={() => setSelectedCitation({ questionId: draft.id, question: draft.question, citation })}
+                      className="px-2 py-1 text-xs"
+                    >
+                      {citation.label}
+                    </Button>
                   </li>
                 ))}
               </ul>
             ) : (
               <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                No evidence found. Export is blocked until reviewer acknowledgment and client input.
+                {EMPTY_CITATION}. Export is blocked until reviewer acknowledgment and client input.
               </div>
             )}
           </div>
@@ -129,6 +332,46 @@ export default function ReviewQueuePage() {
           </div>
         </article>
       ))}
+
+      <Dialog open={selectedCitation !== null} onClose={() => setSelectedCitation(null)} size="lg">
+        <DialogTitle>Citation provenance</DialogTitle>
+        <DialogDescription>
+          {selectedCitation
+            ? `Question ${selectedCitation.questionId}: review evidence context before approval.`
+            : 'Review source evidence details.'}
+        </DialogDescription>
+        {selectedCitation ? (
+          <DialogBody className="space-y-4">
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700">{selectedCitation.question}</div>
+            <dl className="grid gap-2 text-sm text-zinc-700 sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-zinc-900">Citation</dt>
+                <dd>{selectedCitation.citation.label}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-900">Snippet ID</dt>
+                <dd>{selectedCitation.citation.snippetId ?? 'Not available in seeded view'}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-900">Document</dt>
+                <dd>{selectedCitation.citation.documentId ?? 'Not available in seeded view'}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-zinc-900">Sentence index</dt>
+                <dd>{selectedCitation.citation.sentenceIndex ?? 0}</dd>
+              </div>
+            </dl>
+            <div className="rounded-lg border border-zinc-200 bg-white p-3 text-sm text-zinc-700">
+              {selectedCitation.citation.excerpt ?? 'No excerpt is available for this citation in seeded mode.'}
+            </div>
+          </DialogBody>
+        ) : null}
+        <DialogActions>
+          <Button outline onClick={() => setSelectedCitation(null)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   )
 }

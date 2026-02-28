@@ -22,14 +22,17 @@ import {
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { apiRequest } from '@/lib/api-client'
-import {
-  addQuestionnaire,
-  ensureSeeded,
-  getActiveWorkspace,
-  listQuestionnaires,
-  onStoreUpdate,
-  updateQuestionnaire
-} from '@/lib/app-store'
+import { addQuestionnaire, ensureSeeded, getActiveWorkspace, listQuestionnaires, onStoreUpdate, updateQuestionnaire } from '@/lib/app-store'
+
+type SourceType = 'csv' | 'xlsx' | 'xls'
+
+type ParsedSpreadsheet = {
+  sourceType: SourceType
+  headerRowIndex: number
+  headers: string[]
+  rows: string[][]
+  previewRows: string[][]
+}
 
 function suggestColumn(headers: string[], patterns: RegExp[], fallbackIndex: number) {
   for (const header of headers) {
@@ -38,43 +41,74 @@ function suggestColumn(headers: string[], patterns: RegExp[], fallbackIndex: num
   return headers[fallbackIndex] ?? headers[0] ?? ''
 }
 
-async function parseHeaders(file: File): Promise<string[]> {
-  const extension = file.name.split('.').pop()?.toLowerCase()
+function toStringRows(rows: Array<Array<string | number | boolean | null | undefined>>) {
+  return rows.map((row) => row.map((cell) => String(cell ?? '').trim()))
+}
+
+async function parseSpreadsheet(file: File): Promise<ParsedSpreadsheet | null> {
+  const extension = file.name.split('.').pop()?.toLowerCase() as SourceType | undefined
+  if (!extension || !['csv', 'xlsx', 'xls'].includes(extension)) return null
 
   if (extension === 'csv') {
     const text = await file.text()
-    const firstLine = text
+    const parsedRows = text
       .split(/\r?\n/)
-      .find((line) => line.trim().length > 0)
-      ?.trim()
-    if (!firstLine) return []
-    return firstLine.split(',').map((value) => value.trim()).filter(Boolean)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => line.split(',').map((cell) => cell.trim()))
+
+    if (!parsedRows.length) return null
+    const headerRowIndex = parsedRows.findIndex((row) => row.some((cell) => cell.length > 0))
+    const headers = parsedRows[headerRowIndex] ?? []
+    const previewRows = parsedRows.slice(headerRowIndex + 1, headerRowIndex + 6)
+
+    return {
+      sourceType: extension,
+      headerRowIndex: Math.max(headerRowIndex, 0),
+      headers,
+      rows: parsedRows,
+      previewRows
+    }
   }
 
-  if (extension === 'xlsx' || extension === 'xls') {
-    const data = await file.arrayBuffer()
-    const workbook = XLSX.read(data, { type: 'array' })
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(firstSheet, {
-      header: 1,
-      defval: ''
-    })
-    const headerRow = rows.find((row) => row.some((cell) => String(cell).trim().length > 0)) ?? []
-    return headerRow.map((cell) => String(cell).trim()).filter(Boolean)
-  }
+  const data = await file.arrayBuffer()
+  const workbook = XLSX.read(data, { type: 'array' })
+  const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+  const rawRows = XLSX.utils.sheet_to_json<Array<string | number | boolean | null | undefined>>(firstSheet, {
+    header: 1,
+    defval: ''
+  })
+  const rows = toStringRows(rawRows)
+  if (!rows.length) return null
 
-  return []
+  const headerRowIndex = rows.findIndex((row) => row.some((cell) => cell.length > 0))
+  const headers = rows[headerRowIndex] ?? []
+  const previewRows = rows.slice(headerRowIndex + 1, headerRowIndex + 6)
+
+  return {
+    sourceType: extension,
+    headerRowIndex: Math.max(headerRowIndex, 0),
+    headers,
+    rows,
+    previewRows
+  }
 }
 
 export default function QuestionnairesPage() {
   const [workspace, setWorkspace] = useState<ReturnType<typeof getActiveWorkspace>>(null)
   const [batches, setBatches] = useState<ReturnType<typeof listQuestionnaires>>([])
   const [headers, setHeaders] = useState<string[]>([])
+  const [sheetRows, setSheetRows] = useState<string[][]>([])
+  const [previewRows, setPreviewRows] = useState<string[][]>([])
+  const [sourceType, setSourceType] = useState<SourceType>('xlsx')
+  const [headerRowIndex, setHeaderRowIndex] = useState(0)
   const [selectedQuestionColumn, setSelectedQuestionColumn] = useState('')
   const [selectedAnswerColumn, setSelectedAnswerColumn] = useState('')
+  const [suggestedQuestionColumn, setSuggestedQuestionColumn] = useState('')
+  const [suggestedAnswerColumn, setSuggestedAnswerColumn] = useState('')
   const [mappingApproved, setMappingApproved] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [selectedFileName, setSelectedFileName] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -88,8 +122,16 @@ export default function QuestionnairesPage() {
   }, [])
 
   const canNormalise = useMemo(
-    () => Boolean(workspace && selectedFileName && selectedQuestionColumn && selectedAnswerColumn && mappingApproved),
-    [workspace, selectedFileName, selectedQuestionColumn, selectedAnswerColumn, mappingApproved]
+    () =>
+      Boolean(
+        workspace &&
+          selectedFileName &&
+          selectedQuestionColumn &&
+          selectedAnswerColumn &&
+          mappingApproved &&
+          sheetRows.length > 1
+      ),
+    [workspace, selectedFileName, selectedQuestionColumn, selectedAnswerColumn, mappingApproved, sheetRows]
   )
 
   async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -98,31 +140,45 @@ export default function QuestionnairesPage() {
     const file = event.target.files?.[0]
     if (!file) {
       setHeaders([])
+      setSheetRows([])
+      setPreviewRows([])
       setSelectedFileName('')
       setSelectedQuestionColumn('')
       setSelectedAnswerColumn('')
+      setSuggestedQuestionColumn('')
+      setSuggestedAnswerColumn('')
       return
     }
 
     setSelectedFileName(file.name)
     setStatus('Scanning spreadsheet headers...')
 
-    const nextHeaders = await parseHeaders(file)
-    setHeaders(nextHeaders)
-
-    if (!nextHeaders.length) {
-      setStatus('Could not detect headers. Use a spreadsheet with a visible header row.')
+    const parsed = await parseSpreadsheet(file)
+    if (!parsed || !parsed.headers.length) {
+      setStatus('Could not detect headers. Use a spreadsheet with a visible header row and supported type (.xlsx, .xls, .csv).')
+      setHeaders([])
+      setSheetRows([])
+      setPreviewRows([])
       setSelectedQuestionColumn('')
       setSelectedAnswerColumn('')
+      setSuggestedQuestionColumn('')
+      setSuggestedAnswerColumn('')
       return
     }
 
-    const suggestedQuestion = suggestColumn(nextHeaders, [/question/i, /prompt/i, /requirement/i], 0)
-    const suggestedAnswer = suggestColumn(nextHeaders, [/answer/i, /response/i, /supplier/i, /details/i], 1)
+    const suggestedQuestion = suggestColumn(parsed.headers, [/question/i, /prompt/i, /requirement/i], 0)
+    const suggestedAnswer = suggestColumn(parsed.headers, [/answer/i, /response/i, /supplier/i, /details/i], 1)
 
+    setSourceType(parsed.sourceType)
+    setHeaderRowIndex(parsed.headerRowIndex)
+    setHeaders(parsed.headers)
+    setSheetRows(parsed.rows)
+    setPreviewRows(parsed.previewRows)
     setSelectedQuestionColumn(suggestedQuestion)
     setSelectedAnswerColumn(suggestedAnswer)
-    setStatus(`Detected ${nextHeaders.length} columns. Review and approve mapping.`)
+    setSuggestedQuestionColumn(suggestedQuestion)
+    setSuggestedAnswerColumn(suggestedAnswer)
+    setStatus(`Detected ${parsed.headers.length} columns. Review mapping and approve before Normalise.`)
   }
 
   async function normaliseQuestions(event: FormEvent<HTMLFormElement>) {
@@ -131,7 +187,11 @@ export default function QuestionnairesPage() {
       setStatus('Select file, confirm mapping, and ensure an active workspace exists.')
       return
     }
+    if (!window.confirm('Normalise this questionnaire now? This will create a new batch and extract questions from the approved mapping.')) {
+      return
+    }
 
+    setIsSubmitting(true)
     setStatus('Queueing questionnaire import...')
 
     const importResult = await apiRequest<{ questionnaireId: string; status: string }>(
@@ -139,12 +199,37 @@ export default function QuestionnairesPage() {
       {
         method: 'POST',
         workspaceId: workspace.id,
-        body: {}
+        body: {
+          sourceFilename: selectedFileName,
+          sourceType,
+          extractionMode: 'deterministic',
+          rows: sheetRows
+        }
       }
     )
 
     if (!importResult.ok || !importResult.data) {
       setStatus(importResult.error ?? 'Import failed.')
+      setIsSubmitting(false)
+      return
+    }
+
+    const mappingResult = await apiRequest<{ questionnaireId: string; normalizedCount: number }>(
+      `/v1/workspaces/${workspace.id}/questionnaires/${importResult.data.questionnaireId}/mapping/confirm`,
+      {
+        method: 'POST',
+        workspaceId: workspace.id,
+        body: {
+          headerRowIndex,
+          questionColumn: selectedQuestionColumn,
+          answerColumn: selectedAnswerColumn
+        }
+      }
+    )
+
+    if (!mappingResult.ok || !mappingResult.data) {
+      setStatus(mappingResult.error ?? 'Mapping confirmation failed.')
+      setIsSubmitting(false)
       return
     }
 
@@ -154,19 +239,24 @@ export default function QuestionnairesPage() {
       fileName: selectedFileName,
       questionColumn: selectedQuestionColumn,
       answerColumn: selectedAnswerColumn,
-      status: 'Queued',
-      progress: 5,
-      totalQuestions: 0,
+      status: 'Normalized',
+      progress: 20,
+      totalQuestions: mappingResult.data.normalizedCount,
       needsReviewRows: 0
     })
 
-    setStatus(`Questionnaire queued as ${importResult.data.questionnaireId}.`)
+    setStatus(`Normalised ${mappingResult.data.normalizedCount} questions in batch ${mappingResult.data.questionnaireId}.`)
+    setIsSubmitting(false)
 
     if (fileRef.current) fileRef.current.value = ''
     setSelectedFileName('')
     setHeaders([])
+    setSheetRows([])
+    setPreviewRows([])
     setSelectedQuestionColumn('')
     setSelectedAnswerColumn('')
+    setSuggestedQuestionColumn('')
+    setSuggestedAnswerColumn('')
     setMappingApproved(false)
   }
 
@@ -186,14 +276,17 @@ export default function QuestionnairesPage() {
             <FieldGroup>
               <Field>
                 <Label>Questionnaire file</Label>
-                <Input ref={fileRef} type="file" name="questionnaire" onChange={onFileChange} />
+                <Input ref={fileRef} type="file" name="questionnaire" accept=".xlsx,.xls,.csv" onChange={onFileChange} />
               </Field>
               <Field>
                 <Label>Question column (suggested)</Label>
                 <Select
                   name="questionColumn"
                   value={selectedQuestionColumn}
-                  onChange={(event) => setSelectedQuestionColumn(event.currentTarget.value)}
+                  onChange={(event) => {
+                    setSelectedQuestionColumn(event.currentTarget.value)
+                    setMappingApproved(false)
+                  }}
                   disabled={!headers.length}
                 >
                   {headers.length ? (
@@ -212,7 +305,10 @@ export default function QuestionnairesPage() {
                 <Select
                   name="answerColumn"
                   value={selectedAnswerColumn}
-                  onChange={(event) => setSelectedAnswerColumn(event.currentTarget.value)}
+                  onChange={(event) => {
+                    setSelectedAnswerColumn(event.currentTarget.value)
+                    setMappingApproved(false)
+                  }}
                   disabled={!headers.length}
                 >
                   {headers.length ? (
@@ -229,6 +325,35 @@ export default function QuestionnairesPage() {
             </FieldGroup>
           </Fieldset>
 
+          {headers.length ? (
+            <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+              <Text className="text-sm text-zinc-700">
+                Header row: {headerRowIndex + 1}. Suggested mapping: <strong>{suggestedQuestionColumn}</strong> (question) and{' '}
+                <strong>{suggestedAnswerColumn}</strong> (answer).
+              </Text>
+              <div className="overflow-x-auto">
+                <Table dense>
+                  <TableHead>
+                    <TableRow>
+                      {headers.map((header) => (
+                        <TableHeader key={header}>{header}</TableHeader>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {previewRows.map((row, rowIndex) => (
+                      <TableRow key={`preview-${rowIndex}`}>
+                        {headers.map((header, columnIndex) => (
+                          <TableCell key={`${header}-${columnIndex}`}>{row[columnIndex] || '-'}</TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap gap-3">
             <Button
               outline
@@ -241,11 +366,27 @@ export default function QuestionnairesPage() {
             >
               Approve mapping
             </Button>
-            <Button color="blue" type="submit" disabled={!canNormalise}>
-              Normalise questions
+            <Button
+              outline
+              type="button"
+              disabled={!suggestedQuestionColumn || !suggestedAnswerColumn}
+              onClick={() => {
+                setSelectedQuestionColumn(suggestedQuestionColumn)
+                setSelectedAnswerColumn(suggestedAnswerColumn)
+                setMappingApproved(false)
+                setStatus('Mapping reset to suggested columns. Re-approve mapping to continue.')
+              }}
+            >
+              Reset to suggestions
+            </Button>
+            <Button color="blue" type="submit" disabled={!canNormalise || isSubmitting}>
+              {isSubmitting ? 'Normalising...' : 'Normalise questions'}
             </Button>
             {mappingApproved ? <Badge color="green">Mapping approved</Badge> : <Badge color="amber">Awaiting mapping approval</Badge>}
           </div>
+          <Text className="text-sm text-zinc-600">
+            Normalise creates stable question IDs from approved mapping. It does not start drafting automatically.
+          </Text>
           {status ? <Text className="text-zinc-700">{status}</Text> : null}
         </form>
       </section>

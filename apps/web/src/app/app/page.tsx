@@ -2,6 +2,7 @@
 
 import {
   Badge,
+  Button,
   Heading,
   Select,
   Subheading,
@@ -87,17 +88,23 @@ export default function DashboardPage() {
                 <TableHeader>File</TableHeader>
                 <TableHeader>Stage</TableHeader>
                 <TableHeader>Completion</TableHeader>
+                <TableHeader>Open</TableHeader>
               </TableRow>
             </TableHead>
             <TableBody>
               {ready
                 ? recentBatches.map((batch) => (
-                    <TableRow key={batch.id} href={`/app/questionnaires/view?questionnaireId=${encodeURIComponent(batch.id)}`}>
+                    <TableRow key={batch.id}>
                       <TableCell>{batch.id}</TableCell>
                       <TableCell>{new Date(batch.createdAt).toLocaleDateString()}</TableCell>
                       <TableCell>{batch.fileName}</TableCell>
                       <TableCell>{stageBadge(batch.status)}</TableCell>
                       <TableCell>{batch.progress}%</TableCell>
+                      <TableCell>
+                        <Button outline href={`/app/questionnaires/view?questionnaireId=${encodeURIComponent(batch.id)}`}>
+                          View batch
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 : null}
